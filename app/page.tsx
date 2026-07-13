@@ -575,7 +575,7 @@ export default function Home() {
 
         <div className="flex flex-col w-full p-2 flex-wrap gap-2 bg-zinc-800 rounded-lg ">
           <p>Filters:</p>
-          <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-2">
             Type:{' '}
             <select
               onChange={(e) => {
@@ -598,6 +598,9 @@ export default function Home() {
                 any
               </option>
             </select>
+          </div>
+          <div className="inline-flex items-center gap-2">
+            Count: {filteredIngredients?.length} / {ingredients?.length}
           </div>
         </div>
 
