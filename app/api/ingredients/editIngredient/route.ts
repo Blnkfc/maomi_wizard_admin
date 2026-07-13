@@ -8,7 +8,7 @@ export async function PUT(req: NextRequest) {
         
         const data = await sql`
             UPDATE ingredients
-            SET name = ${body.name}, lactose = ${body.lactose}, sweetness = ${body.sweetness}, sourness = ${body.sourness}, bitterness = ${body.bitterness}, saltiness = ${body.saltiness}, compatible_with = ${body.compatible_with}, available_temperatures = ${body.available_temperatures}
+            SET name = ${body.name}, lactose = ${body.lactose}, sweetness = ${body.sweetness}, sourness = ${body.sourness}, bitterness = ${body.bitterness}, saltiness = ${body.saltiness}, compatible_with = ${body.compatible_with}, available_temperatures = ${body.available_temperatures}, ingredient_type = ${body.ingredient_type}
             WHERE id = ${body.id}
             RETURNING *;
         `;

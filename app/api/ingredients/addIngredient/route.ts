@@ -7,8 +7,8 @@ export async function POST(req: NextRequest) {
         const sql = neon(process.env.DATABASE_URL ?? '');
         
         const data = await sql`
-            INSERT INTO ingredients (name, lactose, sweetness, sourness, bitterness, saltiness, compatible_with, available_temperatures)
-            VALUES (${body.name}, ${body.lactose}, ${body.sweetness}, ${body.sourness}, ${body.bitterness}, ${body.saltiness}, ${body.compatible_with}, ${body.available_temperatures})
+            INSERT INTO ingredients (name, lactose, sweetness, sourness, bitterness, saltiness, compatible_with, available_temperatures, ingredient_type)
+            VALUES (${body.name}, ${body.lactose}, ${body.sweetness}, ${body.sourness}, ${body.bitterness}, ${body.saltiness}, ${body.compatible_with}, ${body.available_temperatures}, ${body.ingredient_type})
             RETURNING *;
         `;
         
