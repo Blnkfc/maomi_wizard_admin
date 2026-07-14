@@ -23,6 +23,9 @@ type IngredientFormValues = {
   lactose: boolean;
   compatibleWith: Ingredient['compatibleWith'];
   availableTemperatures: Ingredient['availableTemperatures'];
+  customizableAmount: boolean;
+  amountRange: [number, number] | 'user_specified' | null;
+  assignedColor?: string;
 };
 
 type IngredientWithId = Ingredient & {
@@ -40,9 +43,48 @@ type DbIngredient = {
   saltiness: number;
   compatible_with: Ingredient['compatibleWith'] | null;
   available_temperatures: Ingredient['availableTemperatures'] | null;
+  customizable_amount?: boolean;
+  amount_mode?: 'range' | 'userSpecified' | 'user_specified' | null;
+  amount_min?: number | null;
+  amount_max?: number | null;
+  assigned_color?: string | null;
+};
+
+const mapFormAmountToDb = (values: IngredientFormValues) => {
+  if (!values.customizableAmount) {
+    return {
+      customizable_amount: false,
+      amount_mode: null,
+      amount_min: null,
+      amount_max: null,
+    };
+  }
+
+  if (values.amountRange === 'user_specified' || values.amountRange === null) {
+    return {
+      customizable_amount: true,
+      amount_mode: 'user_specified' as const,
+      amount_min: null,
+      amount_max: null,
+    };
+  }
+
+  return {
+    customizable_amount: true,
+    amount_mode: 'range' as const,
+    amount_min: values.amountRange[0],
+    amount_max: values.amountRange[1],
+  };
 };
 
 const mapDbIngredientToUi = (item: DbIngredient): IngredientWithId => {
+  const customizableAmount = item.customizable_amount ?? false;
+  const amountRange: Ingredient['amountRange'] | undefined = customizableAmount
+    ? item.amount_mode === 'range'
+      ? ([item.amount_min ?? 0, item.amount_max ?? 0] as [number, number])
+      : 'user_specified'
+    : undefined;
+
   return {
     id: item.id,
     name: item.name,
@@ -54,6 +96,9 @@ const mapDbIngredientToUi = (item: DbIngredient): IngredientWithId => {
     saltiness: item.saltiness,
     compatibleWith: item.compatible_with ?? [],
     availableTemperatures: item.available_temperatures ?? [],
+    customizableAmount,
+    amountRange,
+    assignedColor: item.assigned_color ?? undefined, 
   };
 };
 
@@ -107,22 +152,27 @@ const IngredientItem = ({
     lactose: ingredient.lactose,
     compatibleWith: ingredient.compatibleWith ?? [],
     availableTemperatures: ingredient.availableTemperatures ?? [],
+    customizableAmount: ingredient.customizableAmount ?? false,
+    amountRange: ingredient.customizableAmount ? (ingredient.amountRange ?? 'user_specified') : null,
+    assignedColor: ingredient.assignedColor ?? undefined,
   });
   const [hideFullInfo, setHideFullInfo] = useState(true);
 
   const isInitialRender = useRef(true);
-
+  const initialFormValues = useRef(formValues);
   useEffect(() => {
     if (isInitialRender.current) {
       isInitialRender.current = false;
       return;
     }
-
-    const timeout = setTimeout(() => {
-      onFormValuesChange(ingredient.id, formValues).catch((error) => {
-        console.error('Failed to edit ingredient from form change', error);
-      });
-    }, 500);
+    let timeout: NodeJS.Timeout;
+    if(initialFormValues.current !== formValues) {
+      timeout = setTimeout(() => {
+        onFormValuesChange(ingredient.id, formValues).catch((error) => {
+          console.error('Failed to edit ingredient from form change', error);
+        });
+      }, 500);
+    }
 
     return () => clearTimeout(timeout);
   }, [formValues, ingredient.id, onFormValuesChange]);
@@ -152,14 +202,7 @@ const IngredientItem = ({
 
   return (
     <div className="flex relative flex-col gap-2 p-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg shadow">
-      <div
-        onClick={() => onRemove(ingredient.id)}
-        className={
-          'absolute z-100 pointer-events-auto right-4 bottom-4 text-red-700 p-2 border-2 rounded-lg border-red-700 cursor-pointer hover:bg-red-700/40'
-        }
-      >
-        <Trash />
-      </div>
+      
 
       <div className="flex justify-start gap-2 items-center justify-between">
         <div className="flex gap-2 items-center shrink">
@@ -377,8 +420,124 @@ const IngredientItem = ({
               </div>
             )}
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor={`${ingredient.id}-customizableAmount`} className="inline-flex items-center gap-2">
+              <input
+                id={`${ingredient.id}-customizableAmount`}
+                type="checkbox"
+                checked={formValues.customizableAmount}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setFormValues((prev) => ({
+                    ...prev,
+                    customizableAmount: checked,
+                    amountRange: checked ? (prev.amountRange ?? 'user_specified') : null,
+                  }));
+                }}
+              />
+              Customizable Amount
+            </label>
+
+            {formValues.customizableAmount && (
+              <>
+                <label htmlFor={`${ingredient.id}-amount-mode`}>Mode:</label>
+                <select
+                  id={`${ingredient.id}-amount-mode`}
+                  value={Array.isArray(formValues.amountRange) ? 'range' : 'user_specified'}
+                  onChange={(e) => {
+                    setFormValues((prev) => ({
+                      ...prev,
+                      amountRange: e.target.value === 'range' ? (Array.isArray(prev.amountRange) ? prev.amountRange : [0, 4]) : 'user_specified',
+                    }));
+                  }}
+                  className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900"
+                >
+                  <option value="userSpecified">userSpecified</option>
+                  <option value="range">range</option>
+                </select>
+
+                {Array.isArray(formValues.amountRange) && (
+                  <>
+                    <label htmlFor={`${ingredient.id}-amount-min`}>Min:</label>
+                    <input
+                      id={`${ingredient.id}-amount-min`}
+                      type="number"
+                      value={formValues.amountRange[0]}
+                      onChange={(e) => {
+                        const min = Number(e.target.value);
+                        setFormValues((prev) => {
+                          if (!Array.isArray(prev.amountRange)) return prev;
+                          return {
+                            ...prev,
+                            amountRange: [min, prev.amountRange[1]],
+                          };
+                        });
+                      }}
+                      className="w-20 px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900"
+                    />
+
+                    <label htmlFor={`${ingredient.id}-amount-max`}>Max:</label>
+                    <input
+                      id={`${ingredient.id}-amount-max`}
+                      type="number"
+                      value={formValues.amountRange[1]}
+                      onChange={(e) => {
+                        const max = Number(e.target.value);
+                        setFormValues((prev) => {
+                          if (!Array.isArray(prev.amountRange)) return prev;
+                          return {
+                            ...prev,
+                            amountRange: [prev.amountRange[0], max],
+                          };
+                        });
+                      }}
+                      className="w-20 px-2 py-1 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900"
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {formValues.assignedColor !== undefined && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor={`${ingredient.id}-assignedColor`}>Assigned Color:</label>
+              <input
+                id={`${ingredient.id}-assignedColor`}
+                type="color"
+                value={formValues.assignedColor}
+                onChange={(e) =>
+                  setFormValues((prev) => ({
+                    ...prev,
+                    assignedColor: e.target.value,
+                  }))
+                }
+                className="h-8 w-12 cursor-pointer rounded border border-zinc-300 dark:border-zinc-600"
+              />
+              <span className="text-sm text-zinc-500">{formValues.assignedColor}</span>
+            </div>
+          )}
         </>
       )}
+      {formValues.assignedColor !== undefined &&(
+        <div className={'absolute w-[5px] h-[95%] top-[2.5%] rounded-full left-1'} 
+        style={{backgroundColor: formValues.assignedColor}}
+        ></div>
+      )}
+      <div
+        onClick={() => onRemove(ingredient.id)}
+        className={
+          'absolute z-100 pointer-events-auto text-red-700 p-2 border-2 rounded-lg border-red-700 cursor-pointer hover:bg-red-700/40'
+        }
+        style={{
+          position: hideFullInfo ? 'absolute' : 'relative',
+          right: hideFullInfo ? '1rem' : 'auto',
+          bottom: hideFullInfo ? '1rem' : 'auto',
+        }}
+      >
+        <Trash />
+      </div>
     </div>
   );
 };
@@ -439,6 +598,8 @@ export default function Home() {
         compatible_with: values.compatibleWith,
         available_temperatures: values.availableTemperatures,
         ingredient_type: values.type,
+        assigned_color: values.assignedColor,
+        ...mapFormAmountToDb(values),
       }),
     });
 
@@ -451,13 +612,9 @@ export default function Home() {
   }, []);
 
   const editIngredient = useCallback(async (id: number, values: IngredientFormValues) => {
-    const response = await fetch('/api/ingredients/editIngredient', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        id,
+    
+    const body = {
+      id,
         name: values.name,
         lactose: values.lactose,
         sweetness: values.sweetness,
@@ -467,11 +624,22 @@ export default function Home() {
         compatible_with: values.compatibleWith,
         available_temperatures: values.availableTemperatures,
         ingredient_type: values.type,
-      }),
+        assigned_color: values.assignedColor,
+        ...mapFormAmountToDb(values),
+      }
+      console.log('TRY EDIT INGREDIENT',  id, body);
+      
+    const response = await fetch('/api/ingredients/editIngredient', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
-      throw new Error('Failed to edit ingredient');
+      const errorBody = await response.text();
+      throw new Error(`Failed to edit ingredient ${id}: ${response.status} ${response.statusText} ${errorBody}`);
     }
 
     const updated = (await response.json()) as DbIngredient;
@@ -511,6 +679,9 @@ export default function Home() {
       saltiness: 0,
       compatibleWith: [],
       availableTemperatures: [],
+      customizableAmount: false,
+      amountRange: null,
+      assignedColor: filters?.type !== 'any' && ['base', 'secondary', 'boba'].includes(filters.type) ? '#ffffff' : undefined,
     };
     addIngredient(newIngredient)
       .then((created) => {
